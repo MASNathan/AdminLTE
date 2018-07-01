@@ -7,33 +7,53 @@
 *  Please see LICENSE file for your rights under this license. */
 
 require "password.php";
-if(!$auth) die("Not authorized");
+require "auth.php"; // Also imports func.php
 
-require('func.php');
-function process_zip($name)
-{
-	global $zip;
-	$zippointer = $zip->getStream($name);
-	if(!$zippointer)
-	{
-		echo "$name not found in provided ZIP file, skipping...<br>";
-		return;
-	}
-	$contents = "";
-	while (!feof($zippointer)) {
-		$contents .= fread($zippointer, 4096);
-	}
-	fclose($zippointer);
-	$domains = array_filter(explode("\n",$contents));
-	check_domains($domains);
-	return $domains;
+if (php_sapi_name() !== "cli") {
+	if(!$auth) die("Not authorized");
+	check_csrf(isset($_POST["token"]) ? $_POST["token"] : "");
 }
 
-function add_to_zip($path,$name)
+function archive_add_file($path,$name)
 {
-	global $zip;
+	global $archive;
 	if(file_exists($path.$name))
-		$zip->addFile($path.$name,$name);
+		$archive[$name] = file_get_contents($path.$name);
+}
+
+function archive_add_directory($path)
+{
+	if($dir = opendir($path))
+	{
+		while(false !== ($entry = readdir($dir)))
+		{
+			if($entry !== "." && $entry !== "..")
+			{
+				archive_add_file($path,$entry);
+			}
+		}
+		closedir($dir);
+	}
+}
+
+function limit_length(&$item, $key)
+{
+	// limit max length for a domain entry to 253 chars
+	// return only a part of the string if it is longer
+	$item = substr($item, 0, 253);
+}
+
+function process_file($contents)
+{
+	$domains = array_filter(explode("\n",$contents));
+
+	// Walk array and apply a max string length
+	// function to every member of the array of domains
+	array_walk($domains, "limit_length");
+
+	// Check validity of domains (after possible clipping)
+	check_domains($domains);
+	return $domains;
 }
 
 function check_domains($domains)
@@ -67,16 +87,16 @@ function getWildcardListContent() {
 	return "";
 }
 
-if($_POST["action"] == "in")
+if(isset($_POST["action"]))
 {
-	if($_FILES["zip_file"]["name"])
+	if($_FILES["zip_file"]["name"] && $_POST["action"] == "in")
 	{
 		$filename = $_FILES["zip_file"]["name"];
 		$source = $_FILES["zip_file"]["tmp_name"];
 		$type = mime_content_type($source);
 
 		$name = explode(".", $filename);
-		$accepted_types = array('application/zip', 'application/x-zip-compressed', 'multipart/x-zip', 'application/x-compressed');
+		$accepted_types = array('application/gzip', 'application/tar', 'application/x-compressed', 'application/x-gzip');
 		$okay = false;
 		foreach($accepted_types as $mime_type) {
 			if($mime_type == $type) {
@@ -85,73 +105,95 @@ if($_POST["action"] == "in")
 			}
 		}
 
-		$continue = strtolower($name[1]) == 'zip' ? true : false;
+		$continue = strtolower($name[1]) == 'tar' && strtolower($name[2]) == 'gz' ? true : false;
 		if(!$continue || !$okay) {
-			die("The file you are trying to upload is not a .zip file (filename: ".$filename.", type: ".$type."). Please try again.");
+			die("The file you are trying to upload is not a .tar.gz file (filename: ".htmlentities($filename).", type: ".htmlentities($type)."). Please try again.");
 		}
 
-		$zip = new ZipArchive();
-		$x = $zip->open($source);
-		if ($x === true) {
-			if(isset($_POST["blacklist"]))
-			{
-				$blacklist = process_zip("blacklist.txt");
-				exec("sudo pihole -b -q ".implode(" ", $blacklist));
-			}
-
-			if(isset($_POST["whitelist"]))
-			{
-				$whitelist = process_zip("whitelist.txt");
-				exec("sudo pihole -w -q ".implode(" ", $whitelist));
-			}
-
-			if(isset($_POST["wildlist"]))
-			{
-				$wildlist = process_zip("wildcardblocking.txt");
-				exec("sudo pihole -wild -q ".implode(" ", $wildlist));
-			}
-
-			echo "OK";
-
-			$zip->close();
-		}
-		else
+		$fullfilename = sys_get_temp_dir()."/".$filename;
+		if(!move_uploaded_file($source, $fullfilename))
 		{
-			die("Error opening uploaded archive!");
+			die("Failed moving ".htmlentities($source)." to ".htmlentities($fullfilename));
 		}
+
+		$archive = new PharData($fullfilename);
+
+		$importedsomething = false;
+
+		foreach($archive as $file)
+		{
+			if(isset($_POST["blacklist"]) && $file->getFilename() === "blacklist.txt")
+			{
+				$blacklist = process_file(file_get_contents($file));
+				echo "Processing blacklist.txt<br>\n";
+				exec("sudo pihole -b -nr --nuke");
+				exec("sudo pihole -b -q -nr ".implode(" ", $blacklist));
+				$importedsomething = true;
+			}
+			if(isset($_POST["whitelist"]) && $file->getFilename() === "whitelist.txt")
+			{
+				$whitelist = process_file(file_get_contents($file));
+				echo "Processing whitelist.txt<br>\n";
+				exec("sudo pihole -w -nr --nuke");
+				exec("sudo pihole -w -q -nr ".implode(" ", $whitelist));
+				$importedsomething = true;
+			}
+
+			if(isset($_POST["wildlist"]) && $file->getFilename() === "wildcardblocking.txt")
+			{
+				$wildlist = process_file(file_get_contents($file));
+				echo "Processing wildcardblocking.txt<br>\n";
+				exec("sudo pihole -wild -nr --nuke");
+				exec("sudo pihole -wild -q -nr ".implode(" ", $wildlist));
+				$importedsomething = true;
+			}
+			if($importedsomething)
+			{
+				exec("sudo pihole restartdns");
+			}
+		}
+
+		unlink($fullfilename);
+		echo "OK";
 	}
 	else
 	{
-		die("No file transmitted.");
+		die("No file transmitted or parameter error.");
 	}
 }
 else
 {
-	$archive_file_name = "/var/www/html/pi-hole-teleporter_".microtime(true).".zip";
-	$zip = new ZipArchive();
-	touch($archive_file_name);
-	$res = $zip->open($archive_file_name, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+	$tarname = "pi-hole-teleporter_".date("Y-m-d_h-i-s").".tar";
+	$filename = $tarname.".gz";
+	$archive_file_name = sys_get_temp_dir() ."/". $tarname;
+	$archive = new PharData($archive_file_name);
 
-	if ($res !== TRUE) {
-		exit("cannot open/create $archive_file_name<br>Error: ".$zip->getStatusString()."<br>PHP user: ".exec('whoami')."\n");
+	if ($archive->isWritable() !== TRUE) {
+		exit("cannot open/create ".htmlentities($archive_file_name)."<br>\nPHP user: ".exec('whoami')."\n");
 	}
 
-	add_to_zip("/etc/pihole/","whitelist.txt");
-	add_to_zip("/etc/pihole/","blacklist.txt");
-	add_to_zip("/etc/pihole/","adlists.list");
-	add_to_zip("/etc/pihole/","setupVars.conf");
+	archive_add_file("/etc/pihole/","whitelist.txt");
+	archive_add_file("/etc/pihole/","blacklist.txt");
+	archive_add_file("/etc/pihole/","adlists.list");
+	archive_add_file("/etc/pihole/","setupVars.conf");
+	archive_add_file("/etc/pihole/","auditlog.list");
+	archive_add_directory("/etc/dnsmasq.d/");
 
-	$zip->addFromString("wildcardblocking.txt", getWildcardListContent());
-	$zip->close();
+	$archive["wildcardblocking.txt"] = getWildcardListContent();
+	$archive->compress(Phar::GZ); // Creates a gziped copy
+	unlink($archive_file_name); // Unlink original tar file as it is not needed anymore
+	$archive_file_name .= ".gz"; // Append ".gz" extension to ".tar"
 
 	header("Content-type: application/zip");
 	header('Content-Transfer-Encoding: binary');
-	header("Content-Disposition: attachment; filename=pi-hole-teleporter.zip");
+	header("Content-Disposition: attachment; filename=".$filename);
 	header("Content-length: " . filesize($archive_file_name));
 	header("Pragma: no-cache");
 	header("Expires: 0");
-	ob_end_clean();
+	if(ob_get_length() > 0) ob_end_clean();
 	readfile($archive_file_name);
+	ignore_user_abort(true);
+	unlink($archive_file_name);
 	exit;
 }
 

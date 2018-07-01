@@ -11,17 +11,16 @@
     </div>
     <!-- Modal for custom disable time -->
     <div class="modal fade" id="customDisableModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
-        <div class="modal-dialog" role="document">
+        <div class="modal-dialog modal-sm" role="document">
             <div class="modal-content">
                 <div class="modal-header">
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
                     <h4 class="modal-title" id="myModalLabel">Custom disable timeout</h4>
                 </div>
                 <div class="modal-body">
-                    <div class="row">
-                        <div class="col-sm-3"><input id="customTimeout" class="form-control" type="number" value="60"></div>
-                        <div class="col-sm-9">
-                            <div class="btn-group" data-toggle="buttons">
+                    <div class="input-group">
+                        <input id="customTimeout" class="form-control" type="number" value="60">
+                            <div class="input-group-btn" data-toggle="buttons">
                                 <label class="btn btn-default">
                                     <input type="radio"/> Secs
                                 </label>
@@ -29,7 +28,6 @@
                                     <input type="radio"  /> Mins
                                 </label>
                             </div>
-                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -39,35 +37,32 @@
             </div>
         </div>
     </div>
+<?php
+  // Flushes the system write buffers of PHP. This attempts to push everything we have so far all the way to the client's browser.
+  flush();
+  // Run update checker
+  //  - determines local branch each time,
+  //  - determines local and remote version every 30 minutes
+  require "scripts/pi-hole/php/update_checker.php";
+?>
     <!-- /.content-wrapper -->
     <footer class="main-footer">
-            <?php
-            // Check if on a dev branch
-            $piholeBranch = exec("cd /etc/.pihole/ && git rev-parse --abbrev-ref HEAD");
-            $webBranch = exec("git rev-parse --abbrev-ref HEAD");
-
-            // Use vDev if not on master
-            if($piholeBranch !== "master") {
-                $piholeVersion = "vDev";
-                $piholeCommit = exec("cd /etc/.pihole/ && git describe --long --dirty --tags");
-            }
-            else {
-                $piholeVersion = exec("cd /etc/.pihole/ && git describe --tags --abbrev=0");
-            }
-
-            if($webBranch !== "master") {
-                $webVersion = "vDev";
-                $webCommit = exec("git describe --long --dirty --tags");
-            }
-            else {
-                $webVersion = exec("git describe --tags --abbrev=0");
-            }
-            ?>
-        <div class="pull-right hidden-xs <?php if(isset($piholeCommit) || isset($webCommit)) { ?>hidden-md<?php } ?>">
-            <b>Pi-hole Version </b> <span id="piholeVersion"><?php echo $piholeVersion; ?></span><?php if(isset($piholeCommit)) { echo " (".$piholeBranch.", ".$piholeCommit.")"; } ?>
-            <b>Web Interface Version </b> <span id="webVersion"><?php echo $webVersion; ?></span><?php if(isset($webCommit)) { echo " (".$webBranch.", ".$webCommit.")"; } ?>
+	<!-- Version Infos -->
+        <div class="pull-right hidden-xs hidden-sm<?php if(isset($core_commit) || isset($web_commit) || isset($FTL_commit)) { ?> hidden-md<?php } ?>">
+            <b>Pi-hole Version </b> <?php
+            echo $core_current;
+            if(isset($core_commit)) { echo " (".$core_branch.", ".$core_commit.")"; }
+            if($core_update){ ?> <a class="alert-link lookatme" href="https://github.com/pi-hole/pi-hole/releases" target="_blank">(Update available!)</a><?php } ?>
+            <b>Web Interface Version </b><?php
+            echo $web_current;
+            if(isset($web_commit)) { echo " (".$web_branch.", ".$web_commit.")"; }
+            if($web_update){ ?> <a class="alert-link lookatme" href="https://github.com/pi-hole/AdminLTE/releases" target="_blank">(Update available!)</a><?php } ?>
+            <b>FTL Version </b> <?php
+            echo $FTL_current;
+            if(isset($FTL_commit)) { echo " (".$FTL_branch.", ".$FTL_commit.")"; }
+            if($FTL_update){ ?> <a class="alert-link lookatme" href="https://github.com/pi-hole/FTL/releases" target="_blank">(Update available!)</a><?php } ?>
         </div>
-            <div><a href="https://github.com/pi-hole"><i class="fa fa-github"></i></a> <strong><a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=3J2L3Z4DHW9UY">Donate</a></strong> if you found this useful.</div>
+        <div style="display: inline-block"><strong><a href="https://pi-hole.net/donate" target="_blank"><i class="fa fa-heart"></i> Donate</a></strong> if you found this useful.</div>
     </footer>
 </div>
 <!-- ./wrapper -->

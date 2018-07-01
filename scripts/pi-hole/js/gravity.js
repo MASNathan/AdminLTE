@@ -28,7 +28,17 @@ function eventsource() {
             alSuccess.show();
         }
 
-        ta.append(e.data);
+        // Detect ${OVER}
+        if(e.data.indexOf("<------") !== -1)
+        {
+            ta.text(ta.text().substring(0, ta.text().lastIndexOf("\n")) + "\n");
+            var new_string = e.data.replace("<------", "");
+            ta.append(new_string);
+        }
+        else
+        {
+            ta.append(e.data);
+        }
 
     }, false);
 
@@ -50,4 +60,13 @@ $(function(){
     $("[data-hide]").on("click", function(){
         $(this).closest("." + $(this).attr("data-hide")).hide();
     });
+
+    // Do we want to start updating immediately?
+    // gravity.php?go
+    var searchString = window.location.search.substring(1);
+    if(searchString.indexOf("go") !== -1)
+    {
+        $("#gravityBtn").attr("disabled", true);
+        eventsource();
+    }
 });

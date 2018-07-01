@@ -4,13 +4,18 @@
 *  Network-wide ad blocking via your own hardware.
 *
 *  This file is copyright under the latest version of the EUPL.
-*  Please see LICENSE file for your rights under this license. */ ?>
+*  Please see LICENSE file for your rights under this license. */
 
-<?php
     require "scripts/pi-hole/php/auth.php";
     require "scripts/pi-hole/php/password.php";
 
     check_cors();
+
+    // Generate CSRF token
+    if(empty($_SESSION['token'])) {
+        $_SESSION['token'] = base64_encode(openssl_random_pseudo_bytes(32));
+    }
+    $token = $_SESSION['token'];
 
     // Try to get temperature value from different places (OS dependent)
     if(file_exists("/sys/class/thermal/thermal_zone0/temp"))
@@ -139,9 +144,22 @@
             $boxedlayout = false;
         }
     }
-?>
 
+    function pidofFTL()
+    {
+        return shell_exec("pidof pihole-FTL");
+    }
+    $FTLpid = intval(pidofFTL());
+    $FTL = ($FTLpid !== 0 ? true : false);
+
+?>
 <!DOCTYPE html>
+<!-- Pi-hole: A black hole for Internet advertisements
+*  (c) 2017 Pi-hole, LLC (https://pi-hole.net)
+*  Network-wide ad blocking via your own hardware.
+*
+*  This file is copyright under the latest version of the EUPL.
+*  Please see LICENSE file for your rights under this license. -->
 <html>
 <head>
     <meta charset="UTF-8">
@@ -164,6 +182,7 @@
     <link href="style/vendor/font-awesome-4.5.0/css/font-awesome.min.css" rel="stylesheet" type="text/css" />
     <link href="style/vendor/ionicons-2.0.1/css/ionicons.min.css" rel="stylesheet" type="text/css" />
     <link href="style/vendor/dataTables.bootstrap.min.css" rel="stylesheet" type="text/css" />
+    <link href="style/vendor/daterangepicker.css" rel="stylesheet" type="text/css" />
 
     <link href="style/vendor/AdminLTE.min.css" rel="stylesheet" type="text/css" />
     <link href="style/vendor/skin-blue.min.css" rel="stylesheet" type="text/css" />
@@ -171,7 +190,7 @@
     <link rel="icon" type="image/png" sizes="160x160" href="img/logo.svg" />
     <style type="text/css">
         .glow { text-shadow: 0px 0px 5px #fff; }
-        h3 { transition-duration: 500ms }
+        .small-box span { transition-duration: 500ms }
     </style>
 
     <!--[if lt IE 9]>
@@ -188,6 +207,11 @@
         <p>To enable Javascript click <a href="http://www.enable-javascript.com/" target="_blank">here</a></p><label for="js-hide">Close</label></div>
 </div>
 <!-- /JS Warning -->
+<?php
+if($auth) {
+    echo "<div id='token' hidden>$token</div>";
+}
+?>
 <script src="scripts/pi-hole/js/header.js"></script>
 <!-- Send token to JS -->
 <div id="token" hidden><?php if($auth) echo $token; ?></div>
@@ -195,11 +219,11 @@
 <div class="wrapper">
     <header class="main-header">
         <!-- Logo -->
-        <a href="http://pi-hole.net" class="logo">
+        <a href="http://pi-hole.net" class="logo" target="_blank">
             <!-- mini logo for sidebar mini 50x50 pixels -->
-            <span class="logo-mini"><b>P</b>H</span>
+            <span class="logo-mini">P<b>h</b></span>
             <!-- logo for regular state and mobile devices -->
-            <span class="logo-lg"><b>Pi</b>-hole</span>
+            <span class="logo-lg">Pi-<b>hole</b></span>
         </a>
         <!-- Header Navbar: style can be found in header.less -->
         <nav class="navbar navbar-static-top" role="navigation">
@@ -209,16 +233,16 @@
             </a>
             <div class="navbar-custom-menu">
                 <ul class="nav navbar-nav">
-                    <!-- User Account: style can be found in dropdown.less -->
-                    <li id="dropdown-menu" class="dropdown user user-menu">
-                        <a href="#" class="dropdown-toggle">
+                    <li><a style="pointer-events:none;"><samp><?php echo gethostname(); ?></samp></a></li>
+                    <li class="dropdown user user-menu">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="true">
                             <img src="img/logo.svg" class="user-image" style="border-radius: initial" sizes="160x160" alt="Pi-hole logo" />
                             <span class="hidden-xs">Pi-hole</span>
                         </a>
-                        <ul class="dropdown-menu">
+                        <ul class="dropdown-menu" style="right:0">
                             <!-- User image -->
                             <li class="user-header">
-                                <img src="img/logo.svg" sizes="160x160" alt="User Image" />
+                                <img src="img/logo.svg" sizes="160x160" alt="User Image" style="border-color:transparent" />
                                 <p>
                                     Open Source Ad Blocker
                                     <small>Designed For Raspberry Pi</small>
@@ -227,33 +251,41 @@
                             <!-- Menu Body -->
                             <li class="user-body">
                                 <div class="col-xs-4 text-center">
-                                    <a href="https://github.com/pi-hole/pi-hole">GitHub</a>
+                                    <a class="btn-link" href="https://github.com/pi-hole" target="_blank">GitHub</a>
                                 </div>
                                 <div class="col-xs-4 text-center">
-                                    <a href="http://jacobsalmela.com/block-millions-ads-network-wide-with-a-raspberry-pi-hole-2-0/">Details</a>
+                                    <a class="btn-link" href="https://pi-hole.net" target="_blank">Website</a>
                                 </div>
                                 <div class="col-xs-4 text-center">
-                                    <a href="https://github.com/pi-hole/pi-hole/releases">Updates</a>
+                                    <a class="btn-link" href="https://github.com/pi-hole/pi-hole/releases" target="_blank">Updates</a>
                                 </div>
-                                <div class="col-xs-12 text-center" id="sessiontimer">Session is valid for <span id="sessiontimercounter"><?php if($auth && strlen($pwhash) > 0){echo $maxlifetime;}else{echo "0";} ?></span></div>
+                                <div class="col-xs-12 text-center" id="sessiontimer">
+                                    <b>Session is valid for <span id="sessiontimercounter"><?php if($auth && strlen($pwhash) > 0){echo $maxlifetime;}else{echo "0";} ?></span></b>
+                                </div>
                             </li>
                             <!-- Menu Footer -->
                             <li class="user-footer">
-                                <!-- Update alerts -->
-                                <div id="alPiholeUpdate" class="alert alert-info alert-dismissible fade in" role="alert" hidden>
-                                    <a class="alert-link" href="https://github.com/pi-hole/pi-hole/releases">There's an update available for this Pi-hole!</a>
+                                <!-- Version Infos -->
+                                <?php /*
+                                <div class="<?php if(!isset($core_commit) && !isset($web_commit)) { ?>hidden-md <?php } ?>hidden-lg">
+                                    <b>Pi-hole Version </b> <?php
+                                    echo $core_current;
+                                    if(isset($core_commit)) { echo "<br>(".$core_branch.", ".$core_commit.")"; }
+                                    if($core_update){ ?> <a class="alert-link lookatme btn-link" href="https://github.com/pi-hole/pi-hole/releases" target="_blank" style="background:none">(Update available!)</a><?php } ?><br>
+                                    <b>Web Interface Version </b><?php
+                                    echo $web_current;
+                                    if(isset($web_commit)) { echo "<br>(".$web_branch.", ".$web_commit.")"; }
+                                    if($web_update){ ?> <a class="alert-link lookatme btn-link" href="https://github.com/pi-hole/AdminLTE/releases" target="_blank" style="background:none">(Update available!)</a><?php } ?><br>
+                                    <b>FTL Version </b> <?php
+                                    echo $FTL_current;
+                                    if($FTL_update){ ?> <a class="alert-link lookatme btn-link" href="https://github.com/pi-hole/FTL/releases" target="_blank" style="background:none">(Update available!)</a><?php } ?><br><br>
                                 </div>
-                                <div id="alWebUpdate" class="alert alert-info alert-dismissible fade in" role="alert" hidden>
-                                    <a class="alert-link" href="https://github.com/pi-hole/AdminLTE/releases">There's an update available for this Web Interface!</a>
-                                </div>
-
+                                */ ?>
                                 <!-- PayPal -->
-                                <div>
-                                    <form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
-                                        <input type="hidden" name="cmd" value="_s-xclick">
-                                        <input type="hidden" name="hosted_button_id" value="3J2L3Z4DHW9UY">
-                                        <input style="display: block; margin: 0 auto;" type="image" src="img/donate.gif" border="0" name="submit" alt="PayPal - The safer, easier way to pay online!">
-                                    </form>
+                                <div class="text-center">
+                                    <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=3J2L3Z4DHW9UY" target="_blank" style="background:none">
+                                        <img src="img/donate.gif" alt="Donate">
+                                    </a>
                                 </div>
                             </li>
                         </ul>
@@ -273,7 +305,7 @@
                 </div>
                 <div class="pull-left info">
                     <p>Status</p>
-                    <?php
+                        <?php
                         $pistatus = exec('sudo pihole status web');
                         if ($pistatus == "1") {
                             echo '<a id="status"><i class="fa fa-circle" style="color:#7FFF00"></i> Active</a>';
@@ -286,34 +318,41 @@
                         }
 
                         // CPU Temp
-                        if ($celsius >= -273.15) {
-                            echo "<a id=\"temperature\"><i class=\"fa fa-fire\" style=\"color:";
-                            if ($celsius > 60) {
-                                echo "#FF0000";
+                        if($FTL)
+                        {
+                            if ($celsius >= -273.15) {
+                                echo "<a id=\"temperature\"><i class=\"fa fa-fire\" style=\"color:";
+                                if ($celsius > 60) {
+                                    echo "#FF0000";
+                                }
+                                else
+                                {
+                                    echo "#3366FF";
+                                }
+                                echo "\"></i> Temp:&nbsp;";
+                                if($temperatureunit === "F")
+                                {
+                                    echo round($fahrenheit,1) . "&nbsp;&deg;F";
+                                }
+                                elseif($temperatureunit === "K")
+                                {
+                                    echo round($kelvin,1) . "&nbsp;K";
+                                }
+                                else
+                                {
+                                    echo round($celsius,1) . "&nbsp;&deg;C";
+                                }
+                                echo "</a>";
                             }
-                            else
-                            {
-                                echo "#3366FF";
-                            }
-                            echo "\"></i> Temp:&nbsp;";
-                            if($temperatureunit === "F")
-                            {
-                                echo round($fahrenheit,1) . "&deg;F";
-                            }
-                            elseif($temperatureunit === "K")
-                            {
-                                echo round($kelvin,1) . "K";
-                            }
-                            else
-                            {
-                                echo round($celsius,1) . "&deg;C";
-                            }
-                            echo "</a>";
+                        }
+                        else
+                        {
+                            echo '<a id=\"temperature\"><i class="fa fa-circle" style="color:#FF0000"></i> FTL offline</a>';
                         }
                     ?>
                     <br/>
                     <?php
-                    echo "<a><i class=\"fa fa-circle\" style=\"color:";
+                    echo "<a title=\"Detected $nproc cores\"><i class=\"fa fa-circle\" style=\"color:";
                         if ($loaddata[0] > $nproc) {
                             echo "#FF0000";
                         }
@@ -321,7 +360,7 @@
                         {
                             echo "#7FFF00";
                         }
-                        echo "\" title=\"Detected $nproc cores\"></i> Load:&nbsp;&nbsp;" . $loaddata[0] . "&nbsp;&nbsp;" . $loaddata[1] . "&nbsp;&nbsp;". $loaddata[2] . "</a>";
+                        echo "\"></i> Load:&nbsp;&nbsp;" . $loaddata[0] . "&nbsp;&nbsp;" . $loaddata[1] . "&nbsp;&nbsp;". $loaddata[2] . "</a>";
                     ?>
                     <br/>
                     <?php
@@ -335,7 +374,7 @@
                         }
                         if($memory_usage > 0.0)
                         {
-                            echo "\"></i> Memory usage:&nbsp;&nbsp;" . sprintf("%.1f",100.0*$memory_usage) . "%</a>";
+                            echo "\"></i> Memory usage:&nbsp;&nbsp;" . sprintf("%.1f",100.0*$memory_usage) . "&thinsp;%</a>";
                         }
                         else
                         {
@@ -358,6 +397,10 @@
                     $scriptname = "blacklist";
                 }
             }
+            if(!$auth && (!isset($indexpage) || isset($_GET['login'])))
+            {
+                $scriptname = "login";
+            }
             ?>
             <ul class="sidebar-menu">
                 <li class="header">MAIN NAVIGATION</li>
@@ -373,6 +416,31 @@
                     <a href="queries.php">
                         <i class="fa fa-file-text-o"></i> <span>Query Log</span>
                     </a>
+                </li>
+                <li class="treeview<?php if($scriptname === "db_queries.php" || $scriptname === "db_lists.php" || $scriptname === "db_graph.php"){ ?> active<?php } ?>">
+                  <a href="#">
+                    <span class="pull-right-container">
+                      <i class="fa fa-angle-down pull-right" style="padding-right: 5px;"></i>
+                    </span>
+                    <i class="fa fa-clock-o"></i> <span>Long term data</span>
+                  </a>
+                  <ul class="treeview-menu">
+                    <li<?php if($scriptname === "db_graph.php"){ ?> class="active"<?php } ?>>
+                        <a href="db_graph.php">
+                            <i class="fa fa-file-text-o"></i> <span>Graphics</span>
+                        </a>
+                    </li>
+                    <li<?php if($scriptname === "db_queries.php"){ ?> class="active"<?php } ?>>
+                        <a href="db_queries.php">
+                            <i class="fa fa-file-text-o"></i> <span>Query Log</span>
+                        </a>
+                    </li>
+                    <li<?php if($scriptname === "db_lists.php"){ ?> class="active"<?php } ?>>
+                        <a href="db_lists.php">
+                            <i class="fa fa-file-text-o"></i> <span>Top Lists</span>
+                        </a>
+                    </li>
+                  </ul>
                 </li>
                 <!-- Whitelist -->
                 <li<?php if($scriptname === "whitelist"){ ?> class="active"<?php } ?>>
@@ -390,10 +458,10 @@
 
                 <li id="pihole-disable" class="treeview"<?php if ($pistatus == "0") { ?> hidden="true"<?php } ?>>
                   <a href="#">
-                    <i class="fa fa-stop"></i> <span>Disable</span>&nbsp;&nbsp;&nbsp;<span id="flip-status-disable"></span>
                     <span class="pull-right-container">
                       <i class="fa fa-angle-down pull-right" style="padding-right: 5px;"></i>
                     </span>
+                    <i class="fa fa-stop"></i> <span>Disable</span>&nbsp;&nbsp;&nbsp;<span id="flip-status-disable"></span>
                   </a>
                   <ul class="treeview-menu">
                     <li>
@@ -428,12 +496,12 @@
                     <a href="#"><i class="fa fa-play"></i> <span id="enableLabel">Enable</span>&nbsp;&nbsp;&nbsp;<span id="flip-status-enable"></span></a>
                 </li>
                 <!-- Tools -->
-                <li class="treeview <?php if($scriptname === "gravity.php" || $scriptname === "queryads.php" || $scriptname === "debug.php"){ ?>active<?php } ?>">
+                <li class="treeview <?php if(in_array($scriptname, array("gravity.php", "queryads.php", "auditlog.php", "taillog.php", "taillog-FTL.php", "debug.php"))){ ?>active<?php } ?>">
                   <a href="#">
-                    <i class="fa fa-folder"></i> <span>Tools</span>
                     <span class="pull-right-container">
                       <i class="fa fa-angle-down pull-right" style="padding-right: 5px;"></i>
                     </span>
+                    <i class="fa fa-folder"></i> <span>Tools</span>
                   </a>
                   <ul class="treeview-menu">
                     <!-- Run gravity.sh -->
@@ -448,10 +516,22 @@
                             <i class="fa fa-search"></i> <span>Query adlists</span>
                         </a>
                     </li>
+                    <!-- Audit log -->
+                    <li<?php if($scriptname === "auditlog.php"){ ?> class="active"<?php } ?>>
+                        <a href="auditlog.php">
+                            <i class="fa fa-balance-scale"></i> <span>Audit log</span>
+                        </a>
+                    </li>
                     <!-- Tail pihole.log -->
                     <li<?php if($scriptname === "taillog.php"){ ?> class="active"<?php } ?>>
                         <a href="taillog.php">
                             <i class="fa fa-list-ul"></i> <span>Tail pihole.log</span>
+                        </a>
+                    </li>
+                    <!-- Tail pihole-FTL.log -->
+                    <li<?php if($scriptname === "taillog-FTL.php"){ ?> class="active"<?php } ?>>
+                        <a href="taillog-FTL.php">
+                            <i class="fa fa-list-ul"></i> <span>Tail pihole-FTL.log</span>
                         </a>
                     </li>
                     <!-- Generate debug log -->
@@ -483,7 +563,7 @@
                 <?php
                 // Show Login button if $auth is *not* set and authorization is required
                 if(strlen($pwhash) > 0 && !$auth) { ?>
-                <li>
+                <li<?php if($scriptname === "login"){ ?> class="active"<?php } ?>>
                     <a href="index.php?login">
                         <i class="fa fa-user"></i> <span>Login</span>
                     </a>
@@ -491,7 +571,7 @@
                 <?php } ?>
                 <!-- Donate -->
                 <li>
-                    <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=3J2L3Z4DHW9UY">
+                    <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=3J2L3Z4DHW9UY" target="_blank">
                         <i class="fa fa-paypal"></i> <span>Donate</span>
                     </a>
                 </li>
